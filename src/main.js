@@ -652,10 +652,31 @@ function closeEnlarged() {
   }, animationState.duration);
 }
 
-// Handle mouse click
-function onMouseClick(event) {
-  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+// Handle mouse/touch click - unified handler for both
+function handleClick(event) {
+  // Prevent default to avoid interference with webview
+  event.preventDefault();
+  event.stopPropagation();
+  
+  // Get coordinates from either mouse or touch event
+  let clientX, clientY;
+  if (event.touches && event.touches.length > 0) {
+    // Touch event
+    clientX = event.touches[0].clientX;
+    clientY = event.touches[0].clientY;
+  } else if (event.changedTouches && event.changedTouches.length > 0) {
+    // Touch end event
+    clientX = event.changedTouches[0].clientX;
+    clientY = event.changedTouches[0].clientY;
+  } else {
+    // Mouse event
+    clientX = event.clientX;
+    clientY = event.clientY;
+  }
+  
+  // Convert to normalized device coordinates
+  mouse.x = (clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(clientY / window.innerHeight) * 2 + 1;
   
   raycaster.setFromCamera(mouse, camera);
   const intersects = raycaster.intersectObjects(allClickableObjects);
@@ -669,8 +690,38 @@ function onMouseClick(event) {
   }
 }
 
-// Add click event listener
-window.addEventListener('click', onMouseClick);
+// Track touch to distinguish between drag and tap
+let touchStartTime = 0;
+let touchStartPos = { x: 0, y: 0 };
+const TAP_THRESHOLD = 10; // pixels
+const TAP_TIME = 300; // milliseconds
+
+window.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 1) {
+    touchStartTime = Date.now();
+    touchStartPos.x = e.touches[0].clientX;
+    touchStartPos.y = e.touches[0].clientY;
+  }
+}, { passive: true });
+
+// Add event listeners for both mouse and touch
+window.addEventListener('click', handleClick);
+window.addEventListener('touchend', (e) => {
+  // Only treat as click if it was a quick tap (not a drag)
+  if (e.changedTouches.length === 1) {
+    const touch = e.changedTouches[0];
+    const timeDiff = Date.now() - touchStartTime;
+    const distX = Math.abs(touch.clientX - touchStartPos.x);
+    const distY = Math.abs(touch.clientY - touchStartPos.y);
+    const distance = Math.sqrt(distX * distX + distY * distY);
+    
+    // If it was a quick tap (not a drag), treat as click
+    if (timeDiff < TAP_TIME && distance < TAP_THRESHOLD) {
+      e.preventDefault();
+      handleClick(e);
+    }
+  }
+}, { passive: false });
 
 // Animation loop
 function animate() {
